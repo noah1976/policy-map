@@ -22,6 +22,28 @@
       {"@context":"https://schema.org","@graph":[{"@type":"WebSite","name":"どっち寄り？","url":"https://policy-map.pages.dev/"},{"@type":"WebApplication","name":"どっち寄り？","url":"https://policy-map.pages.dev/","applicationCategory":"LifestyleApplication","operatingSystem":"Web","description":"経済、働き方、自由、社会文化、安全保障、国際関係を分野ごとに見ていく政治観の自己理解サービス。特定政党や候補者を推薦せず、回答や結果をサーバーに保存しません。"}]}
     </script>
     <title>どっち寄り？｜あなたの政治観、のぞいてみる？</title>
+    <!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-XXXX"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){dataLayer.push(arguments);}
+
+  gtag('js', new Date());
+
+  gtag('config', 'G-LEP7ZBJ3KY', {
+    send_page_view: false
+  });
+
+  const safePath = location.pathname.startsWith('/r/')
+    ? '/r/shared-result'
+    : location.pathname;
+
+  gtag('event', 'page_view', {
+    page_title: document.title,
+    page_location: location.origin + safePath,
+    page_path: safePath
+  });
+</script>
   </head>
   <body>
     <div id="root"></div>
