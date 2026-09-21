@@ -91,14 +91,16 @@ h1:focus { outline: none; }
 .axis-values { display: grid; grid-template-columns: 54px minmax(0, 1fr) 54px; gap: 10px; align-items: center; margin-top: 18px; }
 .axis-values strong { font-size: 16px; color: #665d57; }
 .axis-values strong:last-child { text-align: right; color: #596276; }
-.axis-track { display: grid; grid-template-columns: minmax(0, 1fr) 3px minmax(0, 1fr); align-items: center; height: 18px; border-radius: 99px; background: #eee9df; overflow: hidden; }
-.axis-half { height: 100%; display: flex; align-items: center; }
-.axis-half-left { justify-content: flex-end; }
+.axis-track { position: relative; height: 18px; border-radius: 99px; background: #eee9df; }
+.axis-half { position: absolute; top: 0; width: 50%; height: 100%; display: flex; align-items: center; overflow: hidden; }
+.axis-half-left { left: 0; justify-content: flex-end; border-radius: 99px 0 0 99px; }
+.axis-half-right { left: 50%; border-radius: 0 99px 99px 0; }
 .axis-half span { display: block; height: 100%; transition: width .35s ease; }
 .axis-half-left span { background: #bf8e8b; border-radius: 99px 0 0 99px; }
 .axis-half-right span { background: #8d9ab8; border-radius: 0 99px 99px 0; }
-.axis-center { display: block; width: 3px; height: 24px; border-radius: 2px; background: #514c45; z-index: 1; }
+.axis-center { position: absolute; top: 50%; left: 50%; display: block; width: 3px; height: calc(100% + 6px); border-radius: 2px; background: #514c45; transform: translate(-50%, -50%); z-index: 2; }
 .axis-direction { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: #746b64; font-size: 12px; }
+.axis-direction span { min-width: 0; max-width: 50%; }
 .axis-direction span:last-child { text-align: right; color: #66718a; }
 .axis-note { margin: 13px 0 0; color: #8a8278; font-size: 12px; line-height: 1.6; }
 .result-explainer { padding: 38px 0; }
