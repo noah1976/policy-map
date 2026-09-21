@@ -1,51 +1,72 @@
-import { createPoliticalProfile, interpret } from './data/interpretation'
+import { mainLabels, getResultLabels } from './data/result-labels'
 import { questions } from './data/questions'
 import { values } from './data/values'
 import type { AnswerValue, SelfLabel } from './data/model'
-import type { ValueAnswers } from './data/interpretation'
+import type { ValueAnswers } from './data/result-labels'
 
-export function ResultReading({ answers, selfLabel, onReview }: { answers: Record<string, AnswerValue>; selfLabel: SelfLabel | null; onReview: (index: number) => void }) {
+type Props = {
+  answers: Record<string, AnswerValue>
+  selfLabel: SelfLabel | null
+  onReview: (index: number) => void
+  onCopy: () => void
+  onShareX: () => void
+  onShareThreads: () => void
+  shareStatus: string
+}
+
+export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, onShareThreads, shareStatus }: Props) {
   const valueAnswers: ValueAnswers = {}
-  for (const q of questions) if (Object.hasOwn(answers, q.id)) valueAnswers[q.value] = answers[q.id]
-  const readings = interpret(valueAnswers)
-  const profile = createPoliticalProfile(valueAnswers)
-  const comparison = selfLabel === 'right' && typeof valueAnswers.redistribution === 'number' && valueAnswers.redistribution >= 4
-    ? '自己認識は「右寄り」ですが、再分配の回答には経済左派と重なる要素があります。右という自己認識と、この要素は共存できます。'
-    : selfLabel === 'left' && typeof valueAnswers.market === 'number' && valueAnswers.market >= 4
-    ? '自己認識は「左寄り」ですが、市場活力の回答には経済右派と重なる要素があります。左という自己認識と、この要素は共存できます。'
-    : selfLabel === 'center' ? '「中道」という自己認識が、すべての分野で中間を選ぶことを意味するとは限りません。分野ごとの組み合わせと照らしてみてください。'
-    : selfLabel === 'unknown' ? '今は左右の名前を決めなくてもかまいません。まず、分野ごとの説明のどこに自分らしさを感じるかを見てみてください。'
-    : '自己認識と、分野ごとの回答を並べています。今回の回答だけから、自己認識が正しいか間違っているかは判定しません。'
-  return <section className="reading">
-    <div className="profile-hero">
-      <p className="eyebrow">3分野の政策プロフィール</p>
-      <h2>{profile.headline}</h2>
-      <p className="profile-sentence">{profile.sentence}</p>
-      <div className="profile-axis-grid">{profile.axes.map(axis => <article key={axis.key}>
-        <span>{axis.name}</span><strong>{axis.label}</strong><p>{axis.description}</p>
+  for (const question of questions) if (Object.hasOwn(answers, question.id)) valueAnswers[question.value] = answers[question.id]
+  const labels = getResultLabels(valueAnswers)
+  const featured = mainLabels(labels)
+  const selfText = selfLabel === 'unknown' ? 'わからない' : selfLabel === 'center' ? '中道' : selfLabel === 'left' ? '左寄り' : '右寄り'
+
+  return <section className="results" aria-labelledby="result-heading">
+    <header className="result-intro">
+      <p className="overline">どっち寄り？</p>
+      <h1 id="result-heading">あなたはこんな感じ</h1>
+      {featured.length > 0 ? <div className="result-labels" aria-label="主な傾向">
+        {featured.map(label => <p key={label.id}>{label.title}</p>)}
+      </div> : <p className="result-empty">今回は、ひとつの言葉に寄せずに見てみよう。</p>}
+      <p className="result-subline">自己認識は「{selfText}」。回答から見える傾向は、こんな組み合わせでした。</p>
+      <div className="share-actions">
+        <button className="button button-primary" onClick={onCopy}>リンクをコピー</button>
+        <button className="button button-secondary" onClick={onShareX}>Xでシェア</button>
+        <button className="button button-secondary" onClick={onShareThreads}>Threadsでシェア</button>
+      </div>
+      <p role="status" className="share-status">{shareStatus}</p>
+    </header>
+
+    {featured.length > 0 && <section className="result-explainer" aria-labelledby="explain-heading">
+      <h2 id="explain-heading">ひとこと解説</h2>
+      <div className="explanation-list">{featured.map(label => <article key={label.id}>
+        <h3>{label.title}</h3><p>{label.description}</p>
       </article>)}</div>
-      <p className="profile-caveat">これは回答を振り返るための暫定ラベルです。政党支持や人格を判定するものではなく、現在は各価値1問のため精密な尺度ではありません。</p>
-    </div>
-    <h2>分野ごとに見る、あなたの政治観</h2>
-    <p className="helper">回答から読み取れる要素と、政治的な分類との関係を説明します。あなた自身を「右派・左派」と確定するものではありません。</p>
-    <div className="reflection"><h3>自己認識と照らすと</h3><p>{comparison}</p></div>
-    <div className="reading-grid">{readings.map(reading => <article className="reading-card" key={reading.group}>
-      <p className="eyebrow">{reading.group}</p><h3>{reading.title}</h3>
-      {reading.elements.map(element => <span className="element-tag" key={element}>{element}</span>)}
-      <p>{reading.detail}</p>
-      <details><summary>分類との関係・回答の根拠</summary>
-        <p>{reading.note}</p>
-        {reading.keys.map(key => {
-          const index = questions.findIndex(q => q.value === key)
-          const answer = valueAnswers[key]
-          const label = answer === undefined ? '未回答' : answer === null ? '判断できない' : answer === 'conditional' ? '条件による' : ['重視しない', 'あまり重視しない', 'ある程度重視する', 'かなり重視する', '非常に重視する'][answer - 1]
-          return <div className="evidence" key={key}><p>{values.find(value => value.key === key)?.label}：<b>{label}</b></p><button className="text-button" onClick={() => onReview(index)}>この回答を見直す</button></div>
-        })}
-      </details>
-    </article>)}</div>
-    <details className="method"><summary>説明のルールと参考資料</summary>
-      <p>「かなり」「非常に」を強い重視として説明する、この試作版独自の暫定ルールです。二つの価値が高ければ両方を残し、低い回答から反対の思想を推定しません。</p>
-      <p>分野と一般的な左右自己認識を分ける考え方は、<a href="https://www.nira.or.jp/paper/research-report/2026/082606.html" target="_blank" rel="noreferrer">NIRAの2026年調査（1.9 政策位置）</a>を参考にしています。このサイトの設問や判定基準が同調査で検証されたという意味ではありません。</p>
+    </section>}
+
+    <section className="result-detail" aria-labelledby="detail-heading">
+      <div className="section-heading"><p className="overline">DETAIL</p><h2 id="detail-heading">もう少し細かく見る</h2></div>
+      <p>数値は優劣ではなく、その価値をどのくらい重視したかの目安です。複数が高くても、ぜんぜんOK。</p>
+      <div className="score-groups">{['経済', '雇用', '自由', '社会文化', '安保', '国際関係'].map(group => {
+        const items = values.filter(value => value.group === group)
+        return <section className="score-group" key={group}><h3>{group}</h3>{items.map(item => {
+          const question = questions.find(candidate => candidate.value === item.key)
+          const answer = question ? answers[question.id] : undefined
+          const score = typeof answer === 'number' ? (answer - 1) * 25 : null
+          const answerText = answer === 'conditional' ? '条件による' : answer === null ? '判断できない' : score === null ? '未回答' : `${score}`
+          return <article className="score-row" key={item.key}>
+            <div><h4>{item.label}</h4><p>{item.description}</p></div>
+            <div className="score-value"><strong>{answerText}</strong>{score !== null && <span aria-hidden="true"><i style={{ width: `${score}%` }} /></span>}</div>
+            {question && <button className="text-link" onClick={() => onReview(questions.indexOf(question))}>見直す</button>}
+          </article>
+        })}</section>
+      })}</div>
+    </section>
+
+    <details className="about-result">
+      <summary>この結果の読み方</summary>
+      <p>このサービスは、右か左かを一本線で決めるものではありません。経済、雇用、自由、社会文化、安全保障、国際関係を別々に見ています。</p>
+      <p>ラベルは回答を振り返りやすくするための目安です。特定政党や候補者をすすめるものではありません。</p>
     </details>
   </section>
 }

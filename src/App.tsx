@@ -1,139 +1,130 @@
 import { useEffect, useRef, useState } from 'react'
 import { questions } from './data/questions'
-import { values } from './data/values'
 import { tradeoffs, tradeoffChoices } from './data/tradeoffs'
 import type { AnswerValue, SelfLabel, TradeoffAnswer } from './data/model'
 import { ResultReading } from './ResultReading'
+import { createSharePayload, createShareToken, stateFromPayload, tokenFromPath, tokenPayload } from './lib/share'
 
 const answerChoices: { value: AnswerValue; label: string }[] = [
-  { value: 1, label: '重視しない' },
-  { value: 2, label: 'あまり重視しない' },
-  { value: 3, label: 'ある程度重視する' },
-  { value: 4, label: 'かなり重視する' },
-  { value: 5, label: '非常に重視する' },
-  { value: 'conditional', label: '条件による' },
-  { value: null, label: '判断できない' },
+  { value: 1, label: 'あまり重視しない' }, { value: 2, label: '少し重視する' },
+  { value: 3, label: 'ある程度重視する' }, { value: 4, label: 'かなり重視する' },
+  { value: 5, label: 'とても重視する' }, { value: 'conditional', label: '条件による' }, { value: null, label: '判断できない' },
 ]
 const selfLabels: { value: SelfLabel; label: string }[] = [
-  { value: 'left', label: '左寄り' }, { value: 'center', label: '中道' },
-  { value: 'right', label: '右寄り' }, { value: 'unknown', label: 'わからない・考えたことがない' },
+  { value: 'left', label: '左寄り' }, { value: 'center', label: '中道' }, { value: 'right', label: '右寄り' }, { value: 'unknown', label: 'わからない' },
 ]
 
 export default function App() {
   const [selfLabel, setSelfLabel] = useState<SelfLabel | null>(null)
-  const [phase, setPhase] = useState<'intro' | 'values' | 'tradeoffs' | 'result'>('intro')
+  const [phase, setPhase] = useState<'home' | 'values' | 'tradeoffs' | 'result'>('home')
   const [current, setCurrent] = useState(0)
   const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
   const [contextAnswers, setContextAnswers] = useState<Record<string, TradeoffAnswer>>({})
-  const [copied, setCopied] = useState('')
   const [reviewing, setReviewing] = useState(false)
+  const [shareStatus, setShareStatus] = useState('')
+  const [sharedToken, setSharedToken] = useState<string | null>(null)
   const heading = useRef<HTMLHeadingElement>(null)
-  useEffect(() => { heading.current?.focus(); window.scrollTo(0, 0) }, [phase, current])
+
+  useEffect(() => {
+    const token = tokenFromPath(location.pathname)
+    const payload = token ? tokenPayload(token) : null
+    if (!payload) return
+    const state = stateFromPayload(payload)
+    setSelfLabel(state.selfLabel); setAnswers(state.answers); setContextAnswers(state.contextAnswers); setSharedToken(token); setPhase('result')
+  }, [])
+  useEffect(() => { heading.current?.focus(); window.scrollTo({ top: 0, behavior: 'smooth' }) }, [phase, current])
 
   function restart() {
-    setSelfLabel(null); setPhase('intro'); setCurrent(0)
-    setAnswers({}); setContextAnswers({}); setCopied(''); setReviewing(false)
+    history.replaceState(null, '', '/')
+    setSelfLabel(null); setPhase('home'); setCurrent(0); setAnswers({}); setContextAnswers({}); setReviewing(false); setShareStatus(''); setSharedToken(null)
   }
-  function startTradeoffs() { setCurrent(0); setPhase('tradeoffs') }
-  async function copyUrl() {
-    try { await navigator.clipboard.writeText(location.href); setCopied('サイトのURLをコピーしました。回答結果は含まれません。') }
-    catch { setCopied('コピーできませんでした。ブラウザーのURLをコピーしてください。') }
+  function begin() { if (selfLabel) setPhase('values') }
+  function startTradeoffs() { setCurrent(0); setReviewing(false); setPhase('tradeoffs') }
+  async function shareUrl() {
+    if (!selfLabel) throw new Error('self label missing')
+    if (sharedToken) return `${location.origin}/r/${sharedToken}`
+    const token = await createShareToken(createSharePayload(answers, contextAnswers, selfLabel))
+    setSharedToken(token)
+    return `${location.origin}/r/${token}`
   }
-
-  if (phase === 'intro') return (
-    <main className="shell"><section className="hero card">
-      <p className="eyebrow">12問でわかる政策プロフィール</p>
-      <h1 ref={heading} tabIndex={-1}>右派左派チェッカー</h1>
-      <p className="lead brand-lead">経済・社会・安保。<br />あなたは、どこで右寄り？ どこで左寄り？</p>
-      <p className="helper">まず{questions.length}問で価値観の組み合わせを診断します。その後、希望すれば追加{tradeoffs.length}問で具体的な場面での選択も見られます。</p>
-      <div className="notice">いくつもの価値を同時に重視してかまいません。正解や投票先を示す診断ではなく、自分の考えを整理するための試作版です。</div>
-      <h2>まず、今の自己認識は？</h2>
-      <p className="helper">この回答は採点に使いません。</p>
-      <div className="self-grid">{selfLabels.map(item => (
-        <button key={item.value} aria-pressed={selfLabel === item.value} className={selfLabel === item.value ? 'choice selected' : 'choice'} onClick={() => setSelfLabel(item.value)}>{item.label}</button>
-      ))}</div>
-      <button className="primary" disabled={!selfLabel} onClick={() => setPhase('values')}>{questions.length}問をはじめる</button>
-    </section></main>
-  )
-
-  if (phase === 'result') {
-    const grouped = values.reduce<Record<string, typeof values>>((acc, item) => { (acc[item.group] ??= []).push(item); return acc }, {})
-    const answeredContexts = tradeoffs.filter(q => contextAnswers[q.id] !== undefined)
-    return (
-      <main className="shell"><section className="card result-card">
-        <p className="eyebrow">右派左派チェッカー</p>
-        <h1 ref={heading} tabIndex={-1}>あなたの診断結果</h1>
-        <p className="lead">自己認識：<strong>{selfLabels.find(item => item.value === selfLabel)?.label}</strong></p>
-        <ResultReading answers={answers} selfLabel={selfLabel} onReview={index => { setCurrent(index); setReviewing(true); setPhase('values') }} />
-        <div className="notice">すべて高くても、矛盾や間違いではありません。ここでは価値ごとの重視度を独立して表示しています。具体的な場面での選択は、追加質問で別に振り返れます。</div>
-        {answeredContexts.length < tradeoffs.length && <div className="next-section">
-          <h2>条件があるとき、どう選ぶ？</h2>
-          <p>両案の目的と負担を比べる追加{tradeoffs.length}問です。価値の点数には加算・減算しません。</p>
-          <button className="primary" onClick={startTradeoffs}>追加{tradeoffs.length}問に進む</button>
-        </div>}
-        {Object.entries(grouped).map(([group, items]) => <section className="group" key={group}>
-          <h2>{group}</h2>
-          {items.map(item => {
-            const q = questions.find(q => q.value === item.key)
-            const answer = q ? answers[q.id] : undefined
-            const score = typeof answer === 'number' ? (answer - 1) * 25 : null
-            const label = answer === undefined ? '未回答' : answerChoices.find(choice => choice.value === answer)?.label
-            return <div className="metric" key={item.key}>
-              <div className="metric-head"><span>{item.label}</span><strong>{score === null ? label : `${score} / 100`}</strong></div>
-              {score !== null && <><div className="bar"><span style={{ width: `${score}%` }} /></div><p>{label}</p></>}
-              <p>{item.description}</p>
-            </div>
-          })}
-        </section>)}
-        {answeredContexts.length > 0 && <section className="group">
-          <h2>条件のある場面での選択</h2>
-          <p className="helper">この回答は、提示した条件に対する選択です。一般的な左右の立場や価値の強さには換算しません。</p>
-          {answeredContexts.map(q => <article className="context-result" key={q.id}>
-            <h3>{q.title}</h3>
-            <p>{q.condition}</p>
-            <p><b>A：</b>{q.optionA}</p><p><b>B：</b>{q.optionB}</p>
-            <p className="response">あなたの回答：{tradeoffChoices.find(choice => choice.value === contextAnswers[q.id])?.label}</p>
-          </article>)}
-          <button className="secondary" onClick={startTradeoffs}>追加質問を見直す</button>
-        </section>}
-        <details className="method"><summary>この結果の読み方と採点方法</summary>
-          <p>各価値は仮設問1問への回答です。重視度の5段階を0・25・50・75・100に置き換えています。精密な測定値や他の人との比較ではありません。</p>
-          <p>「条件による」「判断できない」は数値にせず、そのまま表示します。追加質問の「AとBの中間に近い」とも区別します。</p>
-          <p>自己認識と追加質問は価値の点数に影響しません。設問の表現・条件は検証中で、中立性が実証された尺度ではありません。</p>
-        </details>
-        <div className="actions"><button className="secondary" onClick={restart}>最初からやり直す</button><button className="secondary" onClick={copyUrl}>サイトのURLをコピー</button></div>
-        <p role="status" className="helper">{copied}</p>
-      </section></main>
-    )
+  async function copyLink() {
+    try { const url = await shareUrl(); await navigator.clipboard.writeText(url); setShareStatus('リンクをコピーしたよ。') }
+    catch { setShareStatus('共有リンクを作れませんでした。公開環境の設定を確認してね。') }
+  }
+  async function shareX() {
+    try {
+      const url = await shareUrl()
+      const text = '「どっち寄り？」で政治観をのぞいてみた。右か左だけじゃない。 #どっち寄り'
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
+    } catch { setShareStatus('共有リンクを作れませんでした。公開環境の設定を確認してね。') }
+  }
+  async function shareThreads() {
+    try {
+      const url = await shareUrl()
+      const text = '「どっち寄り？」で政治観をのぞいてみた。右か左だけじゃない。 #どっち寄り'
+      window.open(`https://www.threads.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
+    } catch { setShareStatus('共有リンクを作れませんでした。公開環境の設定を確認してね。') }
   }
 
-  const isContext = phase === 'tradeoffs'
+  if (phase === 'home') return <main className="app-shell home-shell">
+    <header className="site-header"><a href="/" onClick={event => { event.preventDefault(); restart() }}>どっち寄り？</a><span>右か左だけじゃない</span></header>
+    <section className="home-hero" aria-labelledby="home-title">
+      <p className="overline">POLITICAL PROFILE, JUST FOR YOU</p>
+      <h1 id="home-title">どっち寄り？<br /><span>あなたの政治観、のぞいてみる？</span></h1>
+      <p className="home-lead">経済、働き方、自由、安保。<br />ひとつの「右・左」じゃなく、あなたの中にあるいろんな考えを見てみよう。</p>
+      <div className="abstract-orbit" aria-hidden="true"><i /><i /><i /></div>
+    </section>
+    <section className="start-card" aria-labelledby="self-title">
+      <div><p className="overline">STEP 1</p><h2 id="self-title">いまの自分は、どっち寄りだと思う？</h2><p>あとで結果と見比べるためのメモ。スコアには使いません。</p></div>
+      <div className="self-grid">{selfLabels.map(item => <button key={item.value} aria-pressed={selfLabel === item.value} className={selfLabel === item.value ? 'choice selected' : 'choice'} onClick={() => setSelfLabel(item.value)}>{item.label}</button>)}</div>
+      <button className="button button-primary start-button" disabled={!selfLabel} onClick={begin}>12問、はじめる</button>
+    </section>
+    <InfoSection />
+  </main>
+
+  if (phase === 'result') return <main className="app-shell result-shell">
+    <header className="site-header"><a href="/" onClick={event => { event.preventDefault(); restart() }}>どっち寄り？</a><button onClick={restart}>最初から</button></header>
+    <ResultReading answers={answers} selfLabel={selfLabel} onReview={index => { setCurrent(index); setReviewing(true); setPhase('values') }} onCopy={copyLink} onShareX={shareX} onShareThreads={shareThreads} shareStatus={shareStatus} />
+    {tradeoffs.some(question => contextAnswers[question.id] === undefined) && <section className="optional-card"><p className="overline">OPTIONAL</p><h2>条件があるとき、どう選ぶ？</h2><p>具体的な場面での選択も、少しだけ見てみる？ この回答はスコアを上下させません。</p><button className="button button-secondary" onClick={startTradeoffs}>追加4問に進む</button></section>}
+    <InfoSection compact />
+  </main>
+
+  const isTradeoff = phase === 'tradeoffs'
   const question = questions[current]
-  const context = tradeoffs[current]
-  const total = isContext ? tradeoffs.length : questions.length
+  const tradeoff = tradeoffs[current]
+  const total = isTradeoff ? tradeoffs.length : questions.length
+  const selected = isTradeoff ? contextAnswers[tradeoff.id] : answers[question.id]
   const progress = Math.round((current / total) * 100)
-  const hasAnswer = isContext ? contextAnswers[context.id] !== undefined : Object.hasOwn(answers, question.id)
   function next() { if (reviewing) { setReviewing(false); setPhase('result') } else if (current + 1 < total) setCurrent(current + 1); else setPhase('result') }
-  return (
-    <main className="shell"><section className="card question-card">
-      <div className="progress-row"><span>{isContext ? '追加質問' : '価値の重視度'} {current + 1} / {total}</span><span>{progress}%</span></div>
-      <div className="progress" role="progressbar" aria-label="回答の進捗" aria-valuenow={current} aria-valuemin={0} aria-valuemax={total}><span style={{ width: `${progress}%` }} /></div>
-      <p className="eyebrow">{isContext ? 'この条件なら、どちらに近いですか？' : 'どのくらい重視しますか？'}</p>
-      <h1 className="question-title" ref={heading} tabIndex={-1}>{isContext ? context.title : question.prompt}</h1>
-      {isContext ? <>
-        <p className="scenario">{context.condition}</p>
-        <div className="option-pair"><div><h2>A</h2><p>{context.optionA}</p></div><div><h2>B</h2><p>{context.optionB}</p></div></div>
-        <p className="helper">両案はこの場面を考えるための選択肢です。中間・条件による・判断できないも選べます。</p>
-        <div className="answer-grid" role="group" aria-label="条件のある場面での選択">{tradeoffChoices.map(choice => <button key={choice.value} aria-pressed={contextAnswers[context.id] === choice.value} className={contextAnswers[context.id] === choice.value ? 'choice selected' : 'choice'} onClick={() => setContextAnswers(prev => ({ ...prev, [context.id]: choice.value }))}>{choice.label}</button>)}</div>
+
+  return <main className="app-shell question-shell">
+    <header className="site-header"><button onClick={() => phase === 'values' ? setPhase('home') : setPhase('result')}>← 戻る</button><span>{current + 1} / {total}</span></header>
+    <section className="question-card" aria-labelledby="question-title">
+      <div className="progress-track" aria-label="進捗"><span style={{ width: `${progress}%` }} /></div>
+      <p className="overline">{isTradeoff ? 'こんな条件なら、どっちに近い？' : 'これ、どのくらい大事？'}</p>
+      <h1 id="question-title" ref={heading} tabIndex={-1}>{isTradeoff ? tradeoff.title : question.prompt}</h1>
+      {isTradeoff ? <>
+        <p className="scenario">{tradeoff.condition}</p>
+        <div className="option-pair"><article><p>A</p><h2>{tradeoff.optionA}</h2></article><article><p>B</p><h2>{tradeoff.optionB}</h2></article></div>
+        <div className="answer-grid">{tradeoffChoices.map(choice => <button key={choice.value} aria-pressed={selected === choice.value} className={selected === choice.value ? 'choice selected' : 'choice'} onClick={() => setContextAnswers(previous => ({ ...previous, [tradeoff.id]: choice.value }))}>{choice.label}</button>)}</div>
       </> : <>
-        <p className="helper">ほかの価値も同時に重視してかまいません。実現手段や条件によって変わる場合は「条件による」を選べます。</p>
-        <div className="answer-grid" role="group" aria-label="価値の重視度">{answerChoices.map(choice => <button key={String(choice.value)} aria-pressed={hasAnswer && answers[question.id] === choice.value} className={hasAnswer && answers[question.id] === choice.value ? 'choice selected' : 'choice'} onClick={() => setAnswers(prev => ({ ...prev, [question.id]: choice.value }))}>{choice.label}</button>)}</div>
+        <p className="question-helper">ほかの価値も同時に大事でOK。手段や状況で変わるなら「条件による」を選んでね。</p>
+        <div className="answer-grid">{answerChoices.map(choice => <button key={String(choice.value)} aria-pressed={selected === choice.value} className={selected === choice.value ? 'choice selected' : 'choice'} onClick={() => setAnswers(previous => ({ ...previous, [question.id]: choice.value }))}>{choice.label}</button>)}</div>
       </>}
-      <div className="question-actions">
-        <button className="primary" disabled={!hasAnswer} onClick={next}>{reviewing ? '結果に反映する' : current + 1 === total ? '結果を見る' : '次へ'}</button>
-        {current > 0 && <button className="back" onClick={() => setCurrent(current - 1)}>← 前の質問へ</button>}
-        {isContext && <button className="back" onClick={() => setPhase('result')}>結果に戻る</button>}
-      </div>
-    </section></main>
-  )
+      <div className="question-navigation"><button className="button button-primary" disabled={selected === undefined} onClick={next}>{reviewing ? '結果に反映する' : current + 1 === total ? '結果を見る' : '次へ'}</button>{current > 0 && <button className="button button-quiet" onClick={() => setCurrent(current - 1)}>前の質問</button>}</div>
+    </section>
+  </main>
+}
+
+function InfoSection({ compact = false }: { compact?: boolean }) {
+  return <section className={`info-section ${compact ? 'compact' : ''}`} aria-labelledby="about-title">
+    <div><p className="overline">ABOUT</p><h2 id="about-title">右か左だけじゃない。</h2><p>「再分配も市場も大事」「防衛も外交も大事」みたいな組み合わせを、そのまま残します。</p></div>
+    {!compact && <div className="faq-list">
+      <details><summary>右派・左派を判定するサイト？</summary><p>一本の軸で決めるサイトではありません。分野ごとの傾向を、別々に見ます。</p></details>
+      <details><summary>回答や結果は保存される？</summary><p>通常の回答はサーバーに保存しません。共有リンクを作るときだけ、結果を復元できる署名付きトークンを作ります。</p></details>
+      <details><summary>どうやって結果を出している？</summary><p>設問への回答を公開予定のルールで整理し、価値ごとの重視度と言葉のラベルを表示します。</p></details>
+      <details><summary>設問に偏りはない？</summary><p>偏りが入らないと断言はしません。設問とロジックを公開し、継続して検証する方針です。</p></details>
+      <details><summary>特定の政党をすすめる？</summary><p>おすすめしません。政党や候補者との一致度も出しません。</p></details>
+    </div>}
+  </section>
 }

@@ -1,0 +1,4 @@
+User-agent: *
+Allow: /
+
+Sitemap: https://policy-map.pages.dev/sitemap.xml
