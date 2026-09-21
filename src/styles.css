@@ -80,6 +80,27 @@ h1:focus { outline: none; }
 .result-subline { max-width: 540px; color: #655f57; line-height: 1.8; }
 .share-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 24px; }
 .share-status { min-height: 1.5em; margin: 11px 0 0; color: #665f56; font-size: 13px; }
+.axis-scores { padding: 38px 0 12px; }
+.axis-scores h2 { margin: 0 0 8px; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.05em; }
+.axis-intro { margin: 0 0 20px; color: #686259; line-height: 1.8; }
+.axis-list { display: grid; gap: 12px; }
+.axis-card { padding: 20px; border: 1px solid #e4ded2; border-radius: 22px; background: rgba(255, 253, 249, .78); }
+.axis-card-heading { display: flex; align-items: baseline; justify-content: space-between; gap: 14px; }
+.axis-card-heading h3 { margin: 0; font-size: 21px; letter-spacing: -.04em; }
+.axis-card-heading p { margin: 0; color: #81796d; font-size: 13px; font-weight: 800; }
+.axis-values { display: grid; grid-template-columns: 54px minmax(0, 1fr) 54px; gap: 10px; align-items: center; margin-top: 18px; }
+.axis-values strong { font-size: 16px; color: #665d57; }
+.axis-values strong:last-child { text-align: right; color: #596276; }
+.axis-track { display: grid; grid-template-columns: minmax(0, 1fr) 3px minmax(0, 1fr); align-items: center; height: 18px; border-radius: 99px; background: #eee9df; overflow: hidden; }
+.axis-half { height: 100%; display: flex; align-items: center; }
+.axis-half-left { justify-content: flex-end; }
+.axis-half span { display: block; height: 100%; transition: width .35s ease; }
+.axis-half-left span { background: #bf8e8b; border-radius: 99px 0 0 99px; }
+.axis-half-right span { background: #8d9ab8; border-radius: 0 99px 99px 0; }
+.axis-center { display: block; width: 3px; height: 24px; border-radius: 2px; background: #514c45; z-index: 1; }
+.axis-direction { display: flex; justify-content: space-between; gap: 12px; margin-top: 8px; color: #746b64; font-size: 12px; }
+.axis-direction span:last-child { text-align: right; color: #66718a; }
+.axis-note { margin: 13px 0 0; color: #8a8278; font-size: 12px; line-height: 1.6; }
 .result-explainer { padding: 38px 0; }
 .result-explainer h2, .result-detail h2 { margin: 0 0 18px; font-size: clamp(24px, 4vw, 32px); letter-spacing: -.05em; }
 .explanation-list { display: grid; grid-template-columns: repeat(2, 1fr); gap: 10px; }

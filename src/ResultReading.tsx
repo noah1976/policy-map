@@ -3,6 +3,7 @@ import { questions } from './data/questions'
 import { values } from './data/values'
 import type { AnswerValue, SelfLabel } from './data/model'
 import type { ValueAnswers } from './data/result-labels'
+import { getAxisScores } from './data/axis-scores'
 
 type Props = {
   answers: Record<string, AnswerValue>
@@ -19,6 +20,7 @@ export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, 
   for (const question of questions) if (Object.hasOwn(answers, question.id)) valueAnswers[question.value] = answers[question.id]
   const labels = getResultLabels(valueAnswers)
   const featured = mainLabels(labels)
+  const axisScores = getAxisScores(valueAnswers)
   const selfText = selfLabel === 'unknown' ? 'わからない' : selfLabel === 'center' ? '中道' : selfLabel === 'left' ? '左寄り' : '右寄り'
 
   return <section className="results" aria-labelledby="result-heading">
@@ -36,6 +38,28 @@ export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, 
       </div>
       <p role="status" className="share-status">{shareStatus}</p>
     </header>
+
+    <section className="axis-scores" aria-labelledby="axis-heading">
+      <div className="section-heading"><p className="overline">MAP</p><h2 id="axis-heading">左右の強さ</h2></div>
+      <p className="axis-intro">左と右は別々に集計しています。両方が高いときも、相殺せずそのまま表示します。</p>
+      <div className="axis-list">{axisScores.map(axis => {
+        const pending = axis.left === null && axis.right === null
+        return <article className="axis-card" key={axis.id}>
+          <div className="axis-card-heading"><h3>{axis.title}</h3><p>{pending ? '算出保留' : `${axis.left === null ? '—' : axis.left}% / ${axis.right === null ? '—' : axis.right}%`}</p></div>
+          <div className="axis-values" aria-label={`${axis.title}：左 ${axis.left ?? '算出保留'}%、右 ${axis.right ?? '算出保留'}%`}>
+            <strong>{axis.left === null ? '—' : `${axis.left}%`}</strong>
+            <div className="axis-track" aria-hidden="true">
+              <div className="axis-half axis-half-left"><span style={{ width: `${axis.left ?? 0}%` }} /></div>
+              <i className="axis-center" />
+              <div className="axis-half axis-half-right"><span style={{ width: `${axis.right ?? 0}%` }} /></div>
+            </div>
+            <strong>{axis.right === null ? '—' : `${axis.right}%`}</strong>
+          </div>
+          <div className="axis-direction"><span>← {axis.leftLabel}</span><span>{axis.rightLabel} →</span></div>
+          <p className="axis-note">使った項目：{axis.note}。条件による・判断できないは計算から除外しています。</p>
+        </article>
+      })}</div>
+    </section>
 
     {featured.length > 0 && <section className="result-explainer" aria-labelledby="explain-heading">
       <h2 id="explain-heading">ひとこと解説</h2>
