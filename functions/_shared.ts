@@ -1,4 +1,5 @@
 export type SharePayload = { v: 1; a: string; c: string; s: 'left' | 'center' | 'right' | 'unknown' }
+import { getResultLabels, mainLabels } from '../src/data/result-labels'
 
 const encoder = new TextEncoder()
 
@@ -50,38 +51,22 @@ export async function readToken(token: string, secret: string) {
   return decodePayload(body)
 }
 
-function score(answer: string) { return /^[1-5]$/.test(answer) ? Number(answer) : 0 }
-
 export function labelsForPayload(payload: SharePayload) {
-  const scores = payload.a.split('').map(score)
-  const labels: { title: string; strength: number }[] = []
-  const add = (position: number, strong: string, gentle: string) => {
-    if (scores[position] >= 5) labels.push({ title: strong, strength: 2 })
-    else if (scores[position] >= 4) labels.push({ title: gentle, strength: 1 })
+  const values = {
+    redistribution: payload.a[0] === 'c' || payload.a[0] === 'u' ? null : Number(payload.a[0]),
+    market: payload.a[1] === 'c' || payload.a[1] === 'u' ? null : Number(payload.a[1]),
+    jobSecurity: payload.a[2] === 'c' || payload.a[2] === 'u' ? null : Number(payload.a[2]),
+    mobility: payload.a[3] === 'c' || payload.a[3] === 'u' ? null : Number(payload.a[3]),
+    civilLiberty: payload.a[4] === 'c' || payload.a[4] === 'u' ? null : Number(payload.a[4]),
+    publicOrder: payload.a[5] === 'c' || payload.a[5] === 'u' ? null : Number(payload.a[5]),
+    deterrence: payload.a[6] === 'c' || payload.a[6] === 'u' ? null : Number(payload.a[6]),
+    diplomacy: payload.a[7] === 'c' || payload.a[7] === 'u' ? null : Number(payload.a[7]),
+    pluralism: payload.a[8] === 'c' || payload.a[8] === 'u' ? null : Number(payload.a[8]),
+    tradition: payload.a[9] === 'c' || payload.a[9] === 'u' ? null : Number(payload.a[9]),
+    openness: payload.a[10] === 'c' || payload.a[10] === 'u' ? null : Number(payload.a[10]),
+    sovereignty: payload.a[11] === 'c' || payload.a[11] === 'u' ? null : Number(payload.a[11]),
   }
-  add(0, '経済左派', '再分配重視')
-  add(1, '市場派', '市場重視')
-  add(2, '雇用保護派', '雇用保護重視')
-  add(3, '労働移動派', '労働移動重視')
-  add(4, '自由主義寄り', '個人の自由重視')
-  add(5, '秩序重視', '安全・秩序重視')
-  add(6, '防衛重視', '防衛重視')
-  add(7, '外交協調派', '外交協調派')
-  add(8, '社会リベラル', '多様性重視')
-  add(9, '文化保守', '伝統重視')
-  add(10, '国際開放派', '国際交流重視')
-  add(11, '主権重視派', '国内自立重視')
-  if (scores[6] >= 4 && scores[7] >= 4) {
-    const first = labels.findIndex(label => label.title === '防衛重視')
-    if (first >= 0) labels.splice(first, 1)
-    const second = labels.findIndex(label => label.title === '外交協調派')
-    if (second >= 0) labels.splice(second, 1)
-    labels.splice(6, 0, { title: '安保両翼', strength: scores[6] === 5 && scores[7] === 5 ? 2 : 1 })
-  } else {
-    if (scores[6] >= 5) labels[labels.findIndex(label => label.title === '防衛重視')] = { title: '安保右派', strength: 2 }
-    if (scores[7] >= 5) labels[labels.findIndex(label => label.title === '外交協調派')] = { title: '安保左派', strength: 2 }
-  }
-  return labels.sort((a, b) => b.strength - a.strength).slice(0, 5).map(label => label.title)
+  return mainLabels(getResultLabels(values)).map(label => label.title)
 }
 
 export function escapeHtml(value: string) {
