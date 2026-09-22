@@ -8,6 +8,9 @@ import { getAxisScores } from './data/axis-scores'
 type Props = {
   answers: Record<string, AnswerValue>
   selfLabel: SelfLabel | null
+  featured: ReturnType<typeof mainLabels>
+  sharedView: boolean
+  onStartNew: () => void
   onReview: (index: number) => void
   onCopy: () => void
   onShareX: () => void
@@ -15,11 +18,15 @@ type Props = {
   shareStatus: string
 }
 
-export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, onShareThreads, shareStatus }: Props) {
+export function featuredLabelsForAnswers(answers: Record<string, AnswerValue>) {
   const valueAnswers: ValueAnswers = {}
   for (const question of questions) if (Object.hasOwn(answers, question.id)) valueAnswers[question.value] = answers[question.id]
-  const labels = getResultLabels(valueAnswers)
-  const featured = mainLabels(labels)
+  return mainLabels(getResultLabels(valueAnswers))
+}
+
+export function ResultReading({ answers, selfLabel, featured, sharedView, onStartNew, onReview, onCopy, onShareX, onShareThreads, shareStatus }: Props) {
+  const valueAnswers: ValueAnswers = {}
+  for (const question of questions) if (Object.hasOwn(answers, question.id)) valueAnswers[question.value] = answers[question.id]
   const axisScores = getAxisScores(valueAnswers)
   const selfText = selfLabel === 'unknown' ? 'わからない' : selfLabel === 'center' ? '中道' : selfLabel === 'left' ? '左寄り' : '右寄り'
 
@@ -30,6 +37,7 @@ export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, 
       {featured.length > 0 ? <div className="result-labels" aria-label="主な傾向">
         {featured.map(label => <p key={label.id}>{label.title}</p>)}
       </div> : <p className="result-empty">今回は、ひとつの言葉に寄せずに見てみよう。</p>}
+      {sharedView && <button className="button button-primary shared-result-primary" onClick={onStartNew}>自分もやってみる</button>}
       <p className="result-subline">自己認識は「{selfText}」。回答から見える傾向は、こんな組み合わせでした。</p>
       <div className="share-actions">
         <button className="button button-primary" onClick={onCopy}>リンクをコピー</button>
@@ -92,5 +100,9 @@ export function ResultReading({ answers, selfLabel, onReview, onCopy, onShareX, 
       <p>このサービスは、右か左かを一本線で決めるものではありません。経済、雇用、自由、社会文化、安全保障、国際関係を別々に見ています。</p>
       <p>ラベルは回答を振り返りやすくするための目安です。特定政党や候補者をすすめるものではありません。</p>
     </details>
+    {sharedView && <section className="shared-result-footer" aria-label="診断を始める">
+      <p>あなたの政治観も、のぞいてみる？</p>
+      <button className="button button-primary" onClick={onStartNew}>自分もやってみる</button>
+    </section>}
   </section>
 }

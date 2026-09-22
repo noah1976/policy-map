@@ -2,8 +2,72 @@ import { useEffect, useRef, useState } from 'react'
 import { questions } from './data/questions'
 import { tradeoffs, tradeoffChoices } from './data/tradeoffs'
 import type { AnswerValue, SelfLabel, TradeoffAnswer } from './data/model'
-import { ResultReading } from './ResultReading'
+import { featuredLabelsForAnswers, ResultReading } from './ResultReading'
 import { createSharePayload, createShareToken, stateFromPayload, tokenFromPath, tokenPayload } from './lib/share'
+
+type Phase = 'home' | 'values' | 'tradeoffs' | 'result'
+type SavedSession = {
+  v: 1
+  selfLabel: SelfLabel | null
+  phase: Phase
+  current: number
+  answers: Record<string, AnswerValue>
+  contextAnswers: Record<string, TradeoffAnswer>
+  reviewing: boolean
+  sharedToken: string | null
+  sharedFingerprint: string | null
+}
+
+const sessionKey = 'docchi-yori-session-v1'
+
+function readSession(): SavedSession | null {
+  try {
+    const saved = JSON.parse(sessionStorage.getItem(sessionKey) ?? 'null') as SavedSession | null
+    return saved?.v === 1 ? saved : null
+  } catch { return null }
+}
+
+function routeFromHash() {
+  const match = location.hash.match(/^#\/(values|tradeoffs)\/(\d+)$/)
+  if (!match) return null
+  const phase = match[1] as 'values' | 'tradeoffs'
+  const total = phase === 'values' ? questions.length : tradeoffs.length
+  const current = Number(match[2]) - 1
+  return current >= 0 && current < total ? { phase, current } : null
+}
+
+function initialState() {
+  const saved = readSession()
+  const token = tokenFromPath(location.pathname)
+  const payload = token ? tokenPayload(token) : null
+  if (token && payload) {
+    const shared = stateFromPayload(payload)
+    const ownResult = saved?.sharedToken === token
+    return {
+      selfLabel: shared.selfLabel as SelfLabel | null,
+      phase: 'result' as Phase,
+      current: saved?.current ?? 0,
+      answers: ownResult ? saved.answers : shared.answers,
+      contextAnswers: ownResult ? saved.contextAnswers : shared.contextAnswers,
+      reviewing: false,
+      sharedToken: token,
+      sharedFingerprint: JSON.stringify(payload),
+      sharedView: !ownResult,
+    }
+  }
+  const route = routeFromHash()
+  return {
+    selfLabel: saved?.selfLabel ?? null,
+    phase: route?.phase ?? saved?.phase ?? 'home' as Phase,
+    current: route?.current ?? saved?.current ?? 0,
+    answers: saved?.answers ?? {},
+    contextAnswers: saved?.contextAnswers ?? {},
+    reviewing: saved?.reviewing ?? false,
+    sharedToken: saved?.sharedToken ?? null,
+    sharedFingerprint: saved?.sharedFingerprint ?? null,
+    sharedView: false,
+  }
+}
 
 const answerChoices: { value: AnswerValue; label: string }[] = [
   { value: 1, label: 'あまり重視しない' }, { value: 2, label: '少し重視する' },
@@ -15,36 +79,111 @@ const selfLabels: { value: SelfLabel; label: string }[] = [
 ]
 
 export default function App() {
-  const [selfLabel, setSelfLabel] = useState<SelfLabel | null>(null)
-  const [phase, setPhase] = useState<'home' | 'values' | 'tradeoffs' | 'result'>('home')
-  const [current, setCurrent] = useState(0)
-  const [answers, setAnswers] = useState<Record<string, AnswerValue>>({})
-  const [contextAnswers, setContextAnswers] = useState<Record<string, TradeoffAnswer>>({})
-  const [reviewing, setReviewing] = useState(false)
+  const [initial] = useState(initialState)
+  const [selfLabel, setSelfLabel] = useState<SelfLabel | null>(initial.selfLabel)
+  const [phase, setPhase] = useState<Phase>(initial.phase)
+  const [current, setCurrent] = useState(initial.current)
+  const [answers, setAnswers] = useState<Record<string, AnswerValue>>(initial.answers)
+  const [contextAnswers, setContextAnswers] = useState<Record<string, TradeoffAnswer>>(initial.contextAnswers)
+  const [reviewing, setReviewing] = useState(initial.reviewing)
   const [shareStatus, setShareStatus] = useState('')
-  const [sharedToken, setSharedToken] = useState<string | null>(null)
+  const [sharedToken, setSharedToken] = useState<string | null>(initial.sharedToken)
+  const [sharedFingerprint, setSharedFingerprint] = useState<string | null>(initial.sharedFingerprint)
+  const [sharedView, setSharedView] = useState(initial.sharedView)
   const heading = useRef<HTMLHeadingElement>(null)
+  const shareRequest = useRef<{ fingerprint: string; promise: Promise<string> } | null>(null)
 
   useEffect(() => {
-    const token = tokenFromPath(location.pathname)
-    const payload = token ? tokenPayload(token) : null
-    if (!payload) return
-    const state = stateFromPayload(payload)
-    setSelfLabel(state.selfLabel); setAnswers(state.answers); setContextAnswers(state.contextAnswers); setSharedToken(token); setPhase('result')
-  }, [])
+    if (sharedView) return
+    const saved: SavedSession = { v: 1, selfLabel, phase, current, answers, contextAnswers, reviewing, sharedToken, sharedFingerprint }
+    try { sessionStorage.setItem(sessionKey, JSON.stringify(saved)) } catch { /* session storage may be unavailable */ }
+  }, [answers, contextAnswers, current, phase, reviewing, selfLabel, sharedFingerprint, sharedToken, sharedView])
+
+  useEffect(() => {
+    function restoreRoute() {
+      const token = tokenFromPath(location.pathname)
+      const payload = token ? tokenPayload(token) : null
+      if (token && payload) {
+        if (token !== sharedToken) {
+          const state = stateFromPayload(payload)
+          setSelfLabel(state.selfLabel); setAnswers(state.answers); setContextAnswers(state.contextAnswers)
+          setSharedToken(token); setSharedFingerprint(JSON.stringify(payload)); setSharedView(true)
+        }
+        setReviewing(false); setPhase('result')
+        return
+      }
+      const route = routeFromHash()
+      setSharedView(false)
+      if (route) { setCurrent(route.current); setPhase(route.phase) }
+      else { setCurrent(0); setPhase('home') }
+    }
+    addEventListener('popstate', restoreRoute)
+    return () => removeEventListener('popstate', restoreRoute)
+  }, [sharedToken])
   useEffect(() => { heading.current?.focus(); window.scrollTo({ top: 0, behavior: 'smooth' }) }, [phase, current])
 
   function restart() {
+    try { sessionStorage.removeItem(sessionKey) } catch { /* session storage may be unavailable */ }
     history.replaceState(null, '', '/')
-    setSelfLabel(null); setPhase('home'); setCurrent(0); setAnswers({}); setContextAnswers({}); setReviewing(false); setShareStatus(''); setSharedToken(null)
+    shareRequest.current = null
+    setSelfLabel(null); setPhase('home'); setCurrent(0); setAnswers({}); setContextAnswers({}); setReviewing(false); setShareStatus(''); setSharedToken(null); setSharedFingerprint(null); setSharedView(false)
   }
-  function begin() { if (selfLabel) setPhase('values') }
-  function startTradeoffs() { setCurrent(0); setReviewing(false); setPhase('tradeoffs') }
-  async function shareUrl() {
+  function goToQuestion(nextPhase: 'values' | 'tradeoffs', index: number) {
+    setCurrent(index); setPhase(nextPhase)
+    history.pushState(null, '', `/#/${nextPhase}/${index + 1}`)
+  }
+  function begin() { if (selfLabel) goToQuestion('values', 0) }
+  function startTradeoffs() { setReviewing(false); goToQuestion('tradeoffs', 0) }
+
+  function currentSharePayload() {
     if (!selfLabel) throw new Error('self label missing')
-    if (sharedToken) return `${location.origin}/r/${sharedToken}`
-    const token = await createShareToken(createSharePayload(answers, contextAnswers, selfLabel))
-    setSharedToken(token)
+    return createSharePayload(answers, contextAnswers, selfLabel)
+  }
+
+  async function ensureShareToken() {
+    const payload = currentSharePayload()
+    const fingerprint = JSON.stringify(payload)
+    if (sharedToken && sharedFingerprint === fingerprint) return sharedToken
+    if (sharedView && sharedToken) return sharedToken
+    if (shareRequest.current?.fingerprint !== fingerprint) {
+      shareRequest.current = { fingerprint, promise: createShareToken(payload) }
+    }
+    try {
+      const token = await shareRequest.current.promise
+      setSharedToken(token); setSharedFingerprint(fingerprint); setShareStatus('')
+      return token
+    } catch (error) {
+      if (shareRequest.current?.fingerprint === fingerprint) shareRequest.current = null
+      throw error
+    }
+  }
+
+  function showResultUrl(token: string) {
+    const path = `/r/${token}`
+    if (location.pathname !== path) history.pushState(null, '', path)
+  }
+
+  const shareFingerprint = selfLabel ? JSON.stringify(createSharePayload(answers, contextAnswers, selfLabel)) : ''
+  const featured = featuredLabelsForAnswers(answers)
+  const shareText = featured.length > 0
+    ? `あなたは${featured.map(label => label.title).join('、')}です。 #どっち寄り`
+    : '「どっち寄り？」で政治観をのぞいてみた。右か左だけじゃない。 #どっち寄り'
+  useEffect(() => {
+    if (phase !== 'result' || !selfLabel || sharedView) return
+    if (sharedToken && sharedFingerprint === shareFingerprint) {
+      showResultUrl(sharedToken)
+      return
+    }
+    let active = true
+    void ensureShareToken().then(token => { if (active) showResultUrl(token) }).catch(() => {
+      if (active) setShareStatus('共有リンクを作れませんでした。シェアボタンからもう一度試せます。')
+    })
+    return () => { active = false }
+  }, [phase, selfLabel, sharedFingerprint, sharedToken, sharedView, shareFingerprint])
+
+  async function shareUrl() {
+    const token = await ensureShareToken()
+    showResultUrl(token)
     return `${location.origin}/r/${token}`
   }
   async function copyLink() {
@@ -54,15 +193,13 @@ export default function App() {
   async function shareX() {
     try {
       const url = await shareUrl()
-      const text = '「どっち寄り？」で政治観をのぞいてみた。右か左だけじゃない。 #どっち寄り'
-      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
+      window.open(`https://twitter.com/intent/tweet?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
     } catch { setShareStatus('共有リンクを作れませんでした。公開環境の設定を確認してね。') }
   }
   async function shareThreads() {
     try {
       const url = await shareUrl()
-      const text = '「どっち寄り？」で政治観をのぞいてみた。右か左だけじゃない。 #どっち寄り'
-      window.open(`https://www.threads.com/intent/post?text=${encodeURIComponent(text)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
+      window.open(`https://www.threads.com/intent/post?text=${encodeURIComponent(shareText)}&url=${encodeURIComponent(url)}`, '_blank', 'noopener,noreferrer')
     } catch { setShareStatus('共有リンクを作れませんでした。公開環境の設定を確認してね。') }
   }
 
@@ -83,8 +220,8 @@ export default function App() {
   </main>
 
   if (phase === 'result') return <main className="app-shell result-shell">
-    <header className="site-header"><a href="/" onClick={event => { event.preventDefault(); restart() }}>どっち寄り？</a><button onClick={restart}>最初から</button></header>
-    <ResultReading answers={answers} selfLabel={selfLabel} onReview={index => { setCurrent(index); setReviewing(true); setPhase('values') }} onCopy={copyLink} onShareX={shareX} onShareThreads={shareThreads} shareStatus={shareStatus} />
+    <header className="site-header"><a href="/" onClick={event => { event.preventDefault(); restart() }}>どっち寄り？</a><button onClick={restart}>{sharedView ? '自分もやってみる' : '最初から'}</button></header>
+    <ResultReading answers={answers} selfLabel={selfLabel} featured={featured} sharedView={sharedView} onStartNew={restart} onReview={index => { setReviewing(true); goToQuestion('values', index) }} onCopy={copyLink} onShareX={shareX} onShareThreads={shareThreads} shareStatus={shareStatus} />
     {tradeoffs.some(question => contextAnswers[question.id] === undefined) && <section className="optional-card"><p className="overline">OPTIONAL</p><h2>条件があるとき、どう選ぶ？</h2><p>具体的な場面での選択も、少しだけ見てみる？ この回答はスコアを上下させません。</p><button className="button button-secondary" onClick={startTradeoffs}>追加4問に進む</button></section>}
     <InfoSection compact />
   </main>
@@ -95,10 +232,20 @@ export default function App() {
   const total = isTradeoff ? tradeoffs.length : questions.length
   const selected = isTradeoff ? contextAnswers[tradeoff.id] : answers[question.id]
   const progress = Math.round((current / total) * 100)
-  function next() { if (reviewing) { setReviewing(false); setPhase('result') } else if (current + 1 < total) setCurrent(current + 1); else setPhase('result') }
+  function next() {
+    if (reviewing) { setReviewing(false); setPhase('result') }
+    else if (current + 1 < total) goToQuestion(isTradeoff ? 'tradeoffs' : 'values', current + 1)
+    else setPhase('result')
+  }
+
+  function previousQuestion() {
+    if (current > 0) goToQuestion(isTradeoff ? 'tradeoffs' : 'values', current - 1)
+    else if (isTradeoff) setPhase('result')
+    else { setPhase('home'); history.pushState(null, '', '/') }
+  }
 
   return <main className="app-shell question-shell">
-    <header className="site-header"><button onClick={() => phase === 'values' ? setPhase('home') : setPhase('result')}>← 戻る</button><span>{current + 1} / {total}</span></header>
+    <header className="site-header"><button onClick={previousQuestion}>← 戻る</button><span>{current + 1} / {total}</span></header>
     <section className="question-card" aria-labelledby="question-title">
       <div className="progress-track" aria-label="進捗"><span style={{ width: `${progress}%` }} /></div>
       <p className="overline">{isTradeoff ? 'こんな条件なら、どっちに近い？' : 'これ、どのくらい大事？'}</p>
@@ -111,7 +258,7 @@ export default function App() {
         <p className="question-helper">ほかの価値も同時に大事でOK。手段や状況で変わるなら「条件による」を選んでね。</p>
         <div className="answer-grid">{answerChoices.map(choice => <button key={String(choice.value)} aria-pressed={selected === choice.value} className={selected === choice.value ? 'choice selected' : 'choice'} onClick={() => setAnswers(previous => ({ ...previous, [question.id]: choice.value }))}>{choice.label}</button>)}</div>
       </>}
-      <div className="question-navigation"><button className="button button-primary" disabled={selected === undefined} onClick={next}>{reviewing ? '結果に反映する' : current + 1 === total ? '結果を見る' : '次へ'}</button>{current > 0 && <button className="button button-quiet" onClick={() => setCurrent(current - 1)}>前の質問</button>}</div>
+      <div className="question-navigation"><button className="button button-primary" disabled={selected === undefined} onClick={next}>{reviewing ? '結果に反映する' : current + 1 === total ? '結果を見る' : '次へ'}</button>{current > 0 && <button className="button button-quiet" onClick={previousQuestion}>前の質問</button>}</div>
     </section>
   </main>
 }
